@@ -9,6 +9,14 @@ The purpose of this repository is to deploy the serverless infrastructure and re
 ## Purpose
 The purpose of this application is to create alerts on resources in AWS accounts on unrelated and unlinked organisations automatically. It is an event driven serverless application, and recieves inbound tag change events via it's own EventBus. These events are passed onto the StateMachine, which handles the event payload and takes an action accordingly.
 
+## Onboarding Accounts
+To onboard an Org or stand-alone account, select the appropriate CloudFormation template from the onboarding folder. Once that is done, add the account IDs to the EventBus policy statement (EventBusPolicyAccounts) in the template.yaml, and trigger a release. 
+
+## Tagging
+To trigger an alert deployment on a resource, tag it with the key "IsMonitored" and value "Yes". These are case sensitive. Setting the value to "No" will remove any created alerts for the resource. 
+> [!IMPORTANT]
+> EC2 alerts will take up to 12minutes to appear as the application has a number of wait stages for these. This is becuase CloudWatch Agent metrics take some time to appear in AWS, so the wait stage prevents a broken alert from being created. 
+
 ## Deployment Environments
 - Prod
     - Creating a release will deploy the production environment. Ensure that all tests have been performed prior to doing this.
