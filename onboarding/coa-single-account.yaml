@@ -1,0 +1,166 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Centralised Observability Automation Role deployment template
+Parameters:
+  ServiceLevel:
+      Description: In-Hours or Out-of-hours.
+      Type: String
+Conditions:
+  InHours: !Equals 
+    - !Ref ServiceLevel
+    - inhours
+  OutOfHours: !Equals
+    - !Ref ServiceLevel
+    - outofhours
+Resources:
+## Event Bridge ##
+  ## Rule ##
+  CentralisedObservabilityAutomationRule1:
+    Type: AWS::Events::Rule
+    Properties: 
+      EventBusName: default
+      EventPattern:
+        source:
+          - aws.tag
+        detail-type:
+          - Tag Change on Resource
+        detail:
+          changed-tag-keys:
+            - IsMonitored
+            - P1-Error
+            - P1-Throttle
+            - P1-CPU
+            - P2-CPU
+            - P3-CPU
+            - P1-Memory
+            - P2-Memory
+            - P3-Memory
+            - P1-Disk
+            - P2-Disk
+            - P3-Disk
+            - P1-DiskQueueDepth
+            - P2-DiskQueueDepth
+            - P3-DiskQueueDepth
+      Name: !Sub coa-TagChange-${AWS::Region}
+      State: ENABLED
+      Targets:
+        - Id: !Sub coa-TagChange-${AWS::Region}
+          Arn: arn:aws:events:eu-west-1:<ACCOUNT ID>:event-bus/prod-coa-eventbus
+          RoleArn: !GetAtt [ CentralisedObservabilityAutomationRuleRole, Arn ]
+  ## Rule ##
+  CentralisedObservabilityAutomationRule2:
+    Type: AWS::Events::Rule
+    Properties: 
+      EventBusName: default
+      EventPattern:
+        source:
+          - aws.ec2
+        detail-type:
+          - EC2 Instance State-change Notification
+        detail:
+          state:
+            - terminated
+      Name: !Sub coa-StateChange-${AWS::Region}
+      State: ENABLED
+      Targets:
+        - Id: !Sub coa-StateChange-${AWS::Region}
+          Arn: arn:aws:events:eu-west-1:<ACCOUNT ID>:event-bus/prod-coa-eventbus
+          RoleArn: !GetAtt [ CentralisedObservabilityAutomationRuleRole, Arn ]
+  ## Rule ##
+  CentralisedObservabilityAutomationRule3:
+    Type: AWS::Events::Rule
+    Properties: 
+      EventBusName: default
+      EventPattern:
+        source:
+          - aws.health
+      Name: !Sub coa-HealthNotifications-${AWS::Region}
+      State: ENABLED
+      Targets:
+        - Id: !Sub coa-HealthNotifications-${AWS::Region}
+          Arn: arn:aws:events:eu-west-1:<ACCOUNT ID>:event-bus/prod-coa-eventbus
+          RoleArn: !GetAtt [ CentralisedObservabilityAutomationRuleRole, Arn ]
+  # Role ##
+  CentralisedObservabilityAutomationRuleRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub CentralisedObservabilityAutomationRuleRole-${AWS::Region}
+      Path: /service-role/
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+            Action: sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service:
+                - events.amazonaws.com
+      Policies:
+        - PolicyName: !Sub CentralisedObservabilityAutomationPolicy-${AWS::Region}
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Action:
+                  - events:PutEvents
+                Effect: Allow
+                Resource: arn:aws:events:eu-west-1:<ACCOUNT ID>:event-bus/prod-coa-eventbus
+  CentralisedObservabilityAutomationRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub CentralisedObservabilityAutomationRole-${AWS::Region}
+      Path: /service-role/
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+            Action: sts:AssumeRole
+            Effect: Allow
+            Principal:
+              AWS:
+                - arn:aws:iam::<ACCOUNT ID>:root
+              Service:
+                - events.amazonaws.com
+                - lambda.amazonaws.com
+      Policies:
+        - PolicyName: !Sub CentralisedObservabilityAutomationPolicy-${AWS::Region}
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Action:
+                - cloudwatch:*
+                - logs:*
+                - ec2:*
+                - ssm:*
+                - iam:*
+                - ecs:ListServices
+                - rds:DescribeDBInstances
+                - elasticloadbalancing:DescribeTargetGroups
+                Effect: Allow
+                Resource: "*"
+  CentralisedObservabilityAutomationTopicP1InHours:
+    Type: AWS::SNS::Topic
+    Condition: InHours
+    Properties:
+      Subscription: 
+        - Endpoint: 
+          Protocol: 
+      TopicName: !Sub coa-CentralisedObservabilityAutomationTopicP1-${AWS::Region}
+  CentralisedObservabilityAutomationTopicP1OutOfHours:
+    Type: AWS::SNS::Topic
+    Condition: OutOfHours
+    Properties:
+      Subscription: 
+        - Endpoint: 
+          Protocol: 
+      TopicName: !Sub coa-CentralisedObservabilityAutomationTopicP1-${AWS::Region}
+  CentralisedObservabilityAutomationTopicP2:
+    Type: AWS::SNS::Topic
+    Properties:
+      Subscription: 
+        - Endpoint: 
+          Protocol: 
+      TopicName: !Sub coa-CentralisedObservabilityAutomationTopicP2-${AWS::Region}
+  CentralisedObservabilityAutomationTopicP3:
+    Type: AWS::SNS::Topic
+    Properties:
+      Subscription: 
+        - Endpoint: 
+          Protocol: 
+      TopicName: !Sub coa-CentralisedObservabilityAutomationTopicP3-${AWS::Region}
