@@ -4,7 +4,7 @@ Serverless application for the managed service automated observability tooling. 
 The purpose of this repository is to deploy the serverless infrastructure and resources that govern the observability automation pipeline. The Github Actions Workflow pipeline will only trigger when annew release is created. Ensure that you use proper versioning tags when creating releases.
 
 > [!IMPORTANT]
-> Ensure that the setup.yaml is deployed into the account where the application is being hosted. You will also need to cross check the account IDs in the workflow files and samconfig.toml.
+> Ensure that the setup.yaml is deployed into the account where the application is being hosted. You will also need to cross check the account IDs in the workflow files and samconfig.toml. The setup CloudFormation template deploys resouerces necessary (S3 Bucket, Github Actions Role, [GitHub OIDC trust relationship](https://docs.github.com/en/actions/deployment/security-hardening-your-deployments/configuring-openid-connect-in-amazon-web-services)) for the pipeline to run. It creates a federated identity  which allows your GitHub Actions workflows to access resources in Amazon Web Services (AWS), without needing to store the AWS credentials as long-lived GitHub secrets.
 
 ## Deployment Environments
 - Prod
