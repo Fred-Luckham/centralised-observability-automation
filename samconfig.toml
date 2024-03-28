@@ -1,0 +1,24 @@
+version = 0.1
+[default.deploy.parameters]
+stack_name = "dev-coa-app"
+resolve_s3 = false
+s3_bucket = "coa-build-artifacts-<ACCOUNT ID>"
+s3_prefix = "dev-coa"
+region = "eu-west-1"
+confirm_changeset = true
+capabilities = "CAPABILITY_NAMED_IAM"
+disable_rollback = true
+parameter_overrides = "ProjectName=\"coa\" Environment=\"dev\""
+image_repositories = []
+
+[prod.deploy.parameters]
+stack_name = "prod-coa-app"
+resolve_s3 = false
+s3_bucket = "coa-build-artifacts-<ACCOUNT ID>"
+s3_prefix = "prod-coa"
+region = "eu-west-1"
+confirm_changeset = true
+capabilities = "CAPABILITY_NAMED_IAM"
+disable_rollback = true
+parameter_overrides = "ProjectName=\"coa\" Environment=\"prod\""
+image_repositories = []

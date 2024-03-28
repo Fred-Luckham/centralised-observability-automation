@@ -1,0 +1,97 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Centralised Observability Automation pre deployment template
+Resources:
+  GitHubActionsRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: coa-github-actions-role
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !Sub arn:aws:iam::${AWS::AccountId}:oidc-provider/token.actions.githubusercontent.com
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringLike:
+                token.actions.githubusercontent.com:sub: repo:ReburaIT/centralised-observability-automation:*
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+      Policies:
+        - PolicyName: coa-github-actions-bucket-policy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Action:
+                - s3:DeleteObject
+                - s3:PutObject
+                - s3:GetObject
+                - s3:ListBucket
+                Effect: Allow
+                Resource: 
+                  - !Sub arn:aws:s3:::coa-build-artifacts-${AWS::AccountId}/*
+                  - !Sub arn:aws:s3:::coa-build-artifacts-${AWS::AccountId}
+        - PolicyName: coa-github-actions-pipeline-policy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Action:
+                - events:DescribeEventBus
+                - events:DescribeRule
+                - events:CreateEventBus
+                - events:PutPermission
+                - events:PutRule
+                - events:PutTargets
+                - events:RemoveTargets
+                - cloudformation:*
+                - dynamodb:DescribeTable
+                - dynamodb:DeleteTable
+                - states:DescribeStateMachine
+                - states:CreateStateMachine
+                - states:TagResource
+                - states:UpdateStateMachine
+                - iam:GetRole
+                - iam:CreateRole
+                - iam:PutRolePolicy
+                - iam:GetRolePolicy
+                - iam:PassRole
+                - sns:CreateTopic
+                - sns:GetTopicAttributes 
+                - sns:ListSubscriptionsByTopic
+                - sns:Subscribe
+                - sns:CreateTopic
+                - sns:TagResource
+                - ssm:PutParameter
+                - ssm:DeleteParameter
+                - lambda:*
+                Effect: Allow
+                Resource: 
+                  - "*"
+
+  PipelineBucket:
+    Type: AWS::S3::Bucket
+    Properties: 
+      BucketName: !Sub coa-build-artifacts-${AWS::AccountId}
+      NotificationConfiguration:
+        EventBridgeConfiguration:
+          EventBridgeEnabled: true
+
+  PipelineBucketPolicy:
+    Type: 'AWS::S3::BucketPolicy'
+    Properties:
+      Bucket: !Ref PipelineBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Action:
+            - s3:DeleteObject
+            - s3:PutObject
+            - s3:GetObject
+            - s3:ListBucket
+            Effect: Allow
+            Resource: 
+              - !Sub arn:aws:s3:::coa-build-artifacts-${AWS::AccountId}/*
+              - !Sub arn:aws:s3:::coa-build-artifacts-${AWS::AccountId}
+            Principal: 
+              AWS:
+                - !Sub arn:aws:iam::${AWS::AccountId}:role/coa-github-actions-role

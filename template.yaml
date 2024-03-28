@@ -1,0 +1,612 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+
+Parameters:
+#Deployment Environment Parameters
+  ProjectName:
+    Type: String
+    Description: 'Name of the project'
+    Default: 'coa'
+  Environment:
+    Type: String
+    Description: 'Environment to deploy'
+    Default: 'prod'
+    AllowedValues:
+      - prod
+      - staging
+      - dev
+#Alert Threshold Parameters
+  EvaluationPeriods:
+    Type: Number
+    Default: 15
+
+  Period:
+    Type: Number
+    Default: 60
+
+  CPUP1:
+    Type: Number
+    Default: 95
+  CPUP2:
+    Type: Number
+    Default: 90
+  CPUP3:
+    Type: Number
+    Default: 80
+  
+  MemoryP1:
+    Type: Number
+    Default: 95
+  MemoryP2:
+    Type: Number
+    Default: 90
+  MemoryP3:
+    Type: Number
+    Default: 80
+
+  LinuxDiskP1:
+    Type: Number
+    Default: 95
+  LinuxDiskP2:
+    Type: Number
+    Default: 90
+  LinuxDiskP3:
+    Type: Number
+    Default: 80
+
+  WindowsDiskP1:
+    Type: Number
+    Default: 5
+  WindowsDiskP2:
+    Type: Number
+    Default: 10
+  WindowsDiskP3:
+    Type: Number
+    Default: 20
+
+  RDSDiskP1:
+    Type: Number
+    Default: 10000000000
+  RDSDiskP2:
+    Type: Number
+    Default: 25000000000
+  RDSDiskP3:
+    Type: Number
+    Default: 50000000000
+
+  DiskQueueDepthP1:
+    Type: Number
+    Default: 5
+  DiskQueueDepthP2:
+    Type: Number
+    Default: 4
+  DiskQueueDepthP3:
+    Type: Number
+    Default: 2
+
+  StatusP1:
+    Type: Number
+    Default: 1
+  
+  ThrottleP1:
+    Type: Number
+    Default: 1
+
+  ErrorP1:
+    Type: Number
+    Default: 1
+
+  TunnelStateP1:
+    Type: Number
+    Default: 1
+
+  ReputationBounceRateP1:
+    Type: Number
+    Default: 0.02
+
+  ReputationComplaintRateP1:
+    Type: Number
+    Default: 0.004
+
+  TargetResponseTimeP1:
+    Type: Number
+    Default: 3
+  TargetResponseTimeP2:
+    Type: Number
+    Default: 2
+  TargetResponseTimeP3:
+    Type: Number
+    Default: 1
+
+  UnhealthyHostCountP1:
+    Type: Number
+    Default: 3
+  UnhealthyHostCountP2:
+    Type: Number
+    Default: 2
+  UnhealthyHostCountP3:
+    Type: Number
+    Default: 1
+
+Globals:
+#Lambda Globals 
+  Function:
+    Handler: app.lambda_handler
+    Runtime: python3.12
+    Timeout: 300
+    Architectures:
+      - x86_64
+    Environment:
+      Variables:
+        ObservabilityAutomationRole: service-role/CentralisedObservabilityAutomationRole
+        ObservabilityAutomationTool: AlertingAutomationTool
+
+Resources:
+#StateMachine
+  StateMachine:
+    Type: AWS::Serverless::StateMachine
+    Properties:
+      Name: !Sub ${Environment}-${ProjectName}-statemachine
+      Role: !Sub arn:aws:iam::${AWS::AccountId}:role/service-role/prod-coa-statemachine-servicerole
+      DefinitionUri: statemachine/statemachine.asl.json
+      DefinitionSubstitutions:
+        Cleaner: !GetAtt Cleaner.Arn
+        Deleter: !GetAtt Deleter.Arn
+        ECS: !GetAtt ECS.Arn
+        ELB: !GetAtt ELB.Arn
+        RDS: !GetAtt RDS.Arn
+        Lambda: !GetAtt Lambda.Arn
+        VPN: !GetAtt VPN.Arn
+        SES: !GetAtt SES.Arn
+        EC2AgentAlerts: !GetAtt EC2AgentAlerts.Arn
+        EC2NonAgentAlerts: !GetAtt EC2NonAgentAlerts.Arn
+        InstallCW: !GetAtt InstallCW.Arn
+        InstallSSM: !GetAtt InstallSSM.Arn
+        Notifications: !Ref Notifications
+
+#Lambdas 
+  Cleaner:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${Environment}-${ProjectName}-cleaner
+      CodeUri: functions/cleaner/
+      Role: !GetAtt LambdaServiceRole.Arn
+
+  Deleter:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${Environment}-${ProjectName}-deleter
+      CodeUri: functions/deleter/
+      Role: !GetAtt LambdaServiceRole.Arn
+      Environment:
+        Variables:
+          ObservabilityAutomationStateMachine: !Sub arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:${Environment}-${ProjectName}-statemachine
+
+  ECS:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${Environment}-${ProjectName}-ecs-alerts
+      CodeUri: functions/ecs/
+      Role: !GetAtt LambdaServiceRole.Arn
+      Environment:
+        Variables:
+          EvaluationPeriods: !Ref EvaluationPeriods
+          Period: !Ref Period
+          CPUP1: !Ref CPUP1
+          CPUP2: !Ref CPUP2
+          CPUP3: !Ref CPUP3
+          MemoryP1: !Ref MemoryP1
+          MemoryP2: !Ref MemoryP2
+          MemoryP3: !Ref MemoryP3         
+
+  ELB:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${Environment}-${ProjectName}-elb-alerts
+      CodeUri: functions/elb/
+      Role: !GetAtt LambdaServiceRole.Arn
+      Environment:
+        Variables:
+          EvaluationPeriods: !Ref EvaluationPeriods
+          Period: !Ref Period
+          TargetResponseTimeP1: !Ref TargetResponseTimeP1
+          TargetResponseTimeP2: !Ref TargetResponseTimeP2
+          TargetResponseTimeP3: !Ref TargetResponseTimeP3
+          UnhealthyHostCountP1: !Ref UnhealthyHostCountP1
+          UnhealthyHostCountP2: !Ref UnhealthyHostCountP2
+          UnhealthyHostCountP3: !Ref UnhealthyHostCountP3
+
+  RDS:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${Environment}-${ProjectName}-rds-alerts
+      CodeUri: functions/rds/
+      Role: !GetAtt LambdaServiceRole.Arn
+      Environment:
+        Variables:
+          EvaluationPeriods: !Ref EvaluationPeriods
+          Period: !Ref Period
+          CPUP1: !Ref CPUP1
+          CPUP2: !Ref CPUP2
+          CPUP3: !Ref CPUP3
+          RDSDiskP1: !Ref RDSDiskP1
+          RDSDiskP2: !Ref RDSDiskP2
+          RDSDiskP3: !Ref RDSDiskP3
+          DiskQueueDepthP1: !Ref DiskQueueDepthP1
+          DiskQueueDepthP2: !Ref DiskQueueDepthP2
+          DiskQueueDepthP3: !Ref DiskQueueDepthP3
+
+  Notifications:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${Environment}-${ProjectName}-notifications
+      CodeUri: functions/notifications/
+      Role: !GetAtt LambdaServiceRole.Arn
+      Environment:
+        Variables:
+          NotificationSNS: !Ref NotificationSNS
+
+  Lambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${Environment}-${ProjectName}-lambda-alerts
+      CodeUri: functions/lambda/
+      Role: !GetAtt LambdaServiceRole.Arn
+      Environment:
+        Variables:
+          EvaluationPeriods: !Ref EvaluationPeriods
+          Period: !Ref Period
+          ThrottleP1: !Ref ThrottleP1
+          ErrorP1: !Ref ErrorP1 
+
+  SES:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${Environment}-${ProjectName}-ses-alerts
+      CodeUri: functions/ses/
+      Role: !GetAtt LambdaServiceRole.Arn
+      Environment:
+        Variables:
+          EvaluationPeriods: !Ref EvaluationPeriods
+          Period: !Ref Period
+          ReputationBounceRateP1: !Ref ReputationBounceRateP1
+          ReputationComplaintRateP1: !Ref ReputationComplaintRateP1
+
+  VPN:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${Environment}-${ProjectName}-vpn-alerts
+      CodeUri: functions/vpn/
+      Role: !GetAtt LambdaServiceRole.Arn
+      Environment:
+        Variables:
+          EvaluationPeriods: !Ref EvaluationPeriods
+          Period: !Ref Period
+          TunnelStateP1: !Ref TunnelStateP1
+
+  EC2NonAgentAlerts:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${Environment}-${ProjectName}-ec2-nonagent-alerts
+      CodeUri: functions/ec2/non_agent_alerts/
+      Role: !GetAtt LambdaServiceRole.Arn
+      Environment:
+        Variables:
+          EvaluationPeriods: !Ref EvaluationPeriods
+          Period: !Ref Period
+          CPUP1: !Ref CPUP1
+          CPUP2: !Ref CPUP2
+          CPUP3: !Ref CPUP3
+          StatusP1: !Ref StatusP1
+
+  EC2AgentAlerts:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${Environment}-${ProjectName}-ec2-agent-alerts
+      CodeUri: functions/ec2/agent_alerts/
+      Role: !GetAtt LambdaServiceRole.Arn
+      Environment:
+        Variables:
+          EvaluationPeriods: !Ref EvaluationPeriods
+          Period: !Ref Period
+          MemoryP1: !Ref MemoryP1
+          MemoryP2: !Ref MemoryP2
+          MemoryP3: !Ref MemoryP3
+          LinuxDiskP1: !Ref LinuxDiskP1
+          LinuxDiskP2: !Ref LinuxDiskP2
+          LinuxDiskP3: !Ref LinuxDiskP3
+          WindowsDiskP1: !Ref WindowsDiskP1
+          WindowsDiskP2: !Ref WindowsDiskP2
+          WindowsDiskP3: !Ref WindowsDiskP3          
+
+  InstallCW:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${Environment}-${ProjectName}-ec2-install-cw
+      CodeUri: functions/ec2/install_cw_agent/
+      Role: !GetAtt LambdaServiceRole.Arn
+
+  InstallSSM:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${Environment}-${ProjectName}-ec2-install-ssm
+      CodeUri: functions/ec2/install_ssm_agent/
+      Role: !GetAtt LambdaServiceRole.Arn
+
+#SNS
+  NotificationSNS:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub ${Environment}-${ProjectName}-notifications
+      Subscription:
+        - Protocol: email
+          Endpoint: frederick.luckham@rebura.com
+      Tags:
+        - Key: Name
+          Value: !Sub ${Environment}-${ProjectName}-notifications
+
+#IAM
+  StateMachineServiceRole:
+      Type: AWS::IAM::Role
+      Properties:
+        RoleName: !Sub ${Environment}-${ProjectName}-statemachine-servicerole
+        Path: /service-role/
+        AssumeRolePolicyDocument:
+          Version: "2012-10-17"
+          Statement:
+              Action: sts:AssumeRole
+              Effect: Allow
+              Principal:
+                Service:
+                  - states.amazonaws.com
+        Policies:
+          - PolicyName: !Sub ${Environment}-${ProjectName}-statemachine-lambdas
+            PolicyDocument:
+              Version: "2012-10-17"
+              Statement:
+                - Action:
+                    - lambda:InvokeFunction
+                    - lambda:InvokeAsync
+                  Effect: Allow
+                  Resource: 
+                    - !Sub arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:Cleaner
+                    - !Sub arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:Deleter
+                    - !Sub arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:EC2NonAgentAlerts
+                    - !Sub arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:EC2AgentAlerts
+                    - !Sub arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:InstallCW
+                    - !Sub arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:InstallSSM
+                    - !Sub arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:Lambdas
+                    - !Sub arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:RDS
+                    - !Sub arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:ECS
+                    - !Sub arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:ELB
+                    - !Sub arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:Health
+                    - !Sub arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:VPN
+                    - !Sub arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:SES
+
+          - PolicyName: !Sub ${Environment}-${ProjectName}-statemachine-logs
+            PolicyDocument:
+              Version: "2012-10-17"
+              Statement:
+                - Action:
+                    - logs:CreateLogDelivery
+                    - logs:GetLogDelivery
+                    - logs:UpdateLogDelivery
+                    - logs:DeleteLogDelivery
+                    - logs:ListLogDeliveries
+                    - logs:PutResourcePolicy
+                    - logs:DescribeResourcePolicies
+                    - logs:DescribeLogGroups
+                    - xray:PutTraceSegments
+                    - xray:PutTelemetryRecords
+                    - xray:GetSamplingRules
+                    - xray:GetSamplingTargets
+                    - sts:AssumeRole
+                  Effect: Allow
+                  Resource:
+                    - '*'
+
+  LambdaServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${Environment}-${ProjectName}-lambda-servicerole
+      Path: /service-role/
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+            Action: 'sts:AssumeRole'
+            Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+      Policies:
+        - PolicyName: !Sub ${Environment}-${ProjectName}-lambda-logs
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Effect: Allow
+                Resource:
+                  - '*'
+        - PolicyName: !Sub ${Environment}-${ProjectName}-lambda-sts
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Action:
+                  - sts:AssumeRole
+                Effect: Allow
+                Resource: 
+                  - '*'
+        - PolicyName: !Sub ${Environment}-${ProjectName}-lambda-describes
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Action:
+                - rds:DescribeDBInstances
+                - states:ListExecutions
+                - states:ListStateMachines
+                - states:DescribeStateMachine
+                - states:DescribeExecution
+                - states:StopExecution
+                Effect: Allow
+                Resource: 
+                  - '*'
+        - PolicyName: !Sub ${Environment}-${ProjectName}-lambda-sns
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Action:
+                - sns:Publish
+                Effect: Allow
+                Resource: !Ref NotificationSNS
+
+  EventBridgeServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${Environment}-${ProjectName}-eventbus-servicerole
+      Path: /service-role/
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+            Action: 'sts:AssumeRole'
+            Effect: Allow
+            Principal:
+              Service:
+                - events.amazonaws.com
+      Policies:
+        - PolicyName: !Sub ${Environment}-${ProjectName}-lambda-logs
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Action:
+                  - states:StartExecution
+                Effect: Allow
+                Resource:
+                  - !Sub arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:${Environment}-${ProjectName}-statemachine
+
+#EventBus
+  EventBus:
+    Type: AWS::Events::EventBus
+    Properties:
+      Name: !Sub ${Environment}-${ProjectName}-eventbus
+  EventBusPolicyAccounts:
+    Type: AWS::Events::EventBusPolicy
+    Properties:
+      StatementId: allow_account_to_put_events
+      EventBusName: !Sub ${Environment}-${ProjectName}-eventbus
+      Statement:
+        Sid: allow_account_to_put_events
+        Effect: Allow
+        Principal:
+          AWS:
+            - arn:aws:iam::079379323684:root
+            - arn:aws:iam::234649330415:root
+            - arn:aws:iam::198404367986:root
+            - arn:aws:iam::486735550019:root
+            - arn:aws:iam::499171618903:root
+            - arn:aws:iam::633266363699:root
+            - arn:aws:iam::726590049986:root
+            - arn:aws:iam::804710266917:root
+            - arn:aws:iam::006882132573:root
+            - arn:aws:iam::451552360773:root
+            - arn:aws:iam::785064352380:root
+            - arn:aws:iam::624609373448:root
+            - arn:aws:iam::518551792725:root
+            - arn:aws:iam::522134535614:root
+            - arn:aws:iam::490216161260:root
+            - arn:aws:iam::563439087778:root
+            - arn:aws:iam::856937411286:root
+            - arn:aws:iam::641495845316:root
+            - arn:aws:iam::084235719565:root
+            - arn:aws:iam::307739227996:root
+            - arn:aws:iam::568923315893:root
+            - arn:aws:iam::460443494519:root
+            - arn:aws:iam::533267274300:root
+            - arn:aws:iam::562060785861:root
+            - arn:aws:iam::684396540099:root
+            - arn:aws:iam::044072858172:root
+            - arn:aws:iam::635885955353:root
+            - arn:aws:iam::818801065760:root
+            - arn:aws:iam::905418121299:root
+            - arn:aws:iam::542057741954:root
+            - arn:aws:iam::528595946628:root
+            - arn:aws:iam::131864264952:root
+            - arn:aws:iam::422730133007:root
+            - arn:aws:iam::792308667301:root
+            - arn:aws:iam::334061825827:root
+            - arn:aws:iam::871928375152:root
+            - arn:aws:iam::128267655681:root
+            - arn:aws:iam::604524355155:root
+            - arn:aws:iam::507498720939:root
+            - arn:aws:iam::088543416560:root
+            - arn:aws:iam::406395465327:root
+            - arn:aws:iam::589911670240:root
+            - arn:aws:iam::741533620654:root
+            - arn:aws:iam::810003669351:root
+            - arn:aws:iam::045524727250:root
+            - arn:aws:iam::063387959192:root
+            - arn:aws:iam::517751871049:root
+            - arn:aws:iam::002772113756:root
+        Action: events:PutEvents
+        Resource:
+          Fn::GetAtt:
+            - EventBus
+            - Arn
+    DependsOn:
+      - EventBus
+  EventRuleTerminateEvent:
+    Type: AWS::Events::Rule
+    Properties:
+      EventBusName: !Sub ${Environment}-${ProjectName}-eventbus
+      EventPattern:
+        detail-type:
+          - EC2 Instance State-change Notification
+        source:
+          - aws.ec2
+        detail:
+          state:
+            - terminated
+      Name: !Sub ${Environment}-${ProjectName}-eventbus-rule-terminate
+      State: ENABLED
+      Targets:
+        - Id: receive_termination_event
+          Arn: !Sub arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:${Environment}-${ProjectName}-statemachine
+          RoleArn: !Sub arn:aws:iam::${AWS::AccountId}:role/service-role/${Environment}-${ProjectName}-eventbus-servicerole
+    DependsOn:
+      - EventBus
+  EventRuleTagEvent:
+    Type: AWS::Events::Rule
+    Properties:
+      EventBusName: !Sub ${Environment}-${ProjectName}-eventbus
+      EventPattern:
+        detail-type:
+          - Tag Change on Resource
+        source:
+          - aws.tag
+        detail:
+          changed-tag-keys:
+            - IsMonitored
+            - P1-Error
+            - P1-Throttle
+            - P1-CPU
+            - P2-CPU
+            - P3-CPU
+            - P1-Memory
+            - P2-Memory
+            - P3-Memory
+            - P1-Disk
+            - P2-Disk
+            - P3-Disk
+            - P1-DiskQueueDepth
+            - P2-DiskQueueDepth
+            - P3-DiskQueueDepth
+      Name: !Sub ${Environment}-${ProjectName}-eventbus-rule-tag
+      State: ENABLED
+      Targets:
+        - Id: receive_tag_event
+          Arn: !Sub arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:${Environment}-${ProjectName}-statemachine
+          RoleArn: !Sub arn:aws:iam::${AWS::AccountId}:role/service-role/${Environment}-${ProjectName}-eventbus-servicerole
+    DependsOn:
+      - EventBus

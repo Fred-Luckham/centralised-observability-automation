@@ -1,0 +1,606 @@
+{
+    "Comment": "A centralised observability automation tool. It creates alerts on tagged resources in other accounts via Event Bridge.",
+    "StartAt": "Check for Health Event",
+    "States": {
+      "Check for Health Event":{
+        "Type": "Choice",
+        "Choices": [
+          {
+            "And": [
+              {
+                "Variable": "$.source",
+                "StringMatches": "aws.health"
+              },
+              {
+                "Variable": "$.detail.eventScopeCode",
+                "StringMatches": "ACCOUNT_SPECIFIC"
+              }
+            ],
+            "Next": "Notifications"
+          }
+        ],
+        "Default": "Cleaner"
+      },
+      "Notifications": {
+        "Type": "Task",
+        "Resource": "arn:aws:states:::lambda:invoke",
+        "OutputPath": "$.Payload",
+        "Parameters": {
+          "Payload.$": "$",
+          "FunctionName": "${Notifications}"
+        },
+        "Retry": [
+          {
+            "ErrorEquals": [
+              "Lambda.ServiceException",
+              "Lambda.AWSLambdaException",
+              "Lambda.SdkClientException",
+              "Lambda.TooManyRequestsException"
+            ],
+            "IntervalSeconds": 2,
+            "MaxAttempts": 6,
+            "BackoffRate": 2
+          }
+        ],
+        "End": true
+      },
+      "Cleaner": {
+        "Type": "Task",
+        "Resource": "arn:aws:states:::lambda:invoke",
+        "OutputPath": "$.Payload",
+        "Parameters": {
+          "Payload.$": "$",
+          "FunctionName": "${Cleaner}"
+        },
+        "Retry": [
+          {
+            "ErrorEquals": [
+              "Lambda.ServiceException",
+              "Lambda.AWSLambdaException",
+              "Lambda.SdkClientException",
+              "Lambda.TooManyRequestsException"
+            ],
+            "IntervalSeconds": 2,
+            "MaxAttempts": 6,
+            "BackoffRate": 2
+          }
+        ],
+        "Next": "Create / Delete / Ignore"
+      },
+      "InstallSSM": {
+        "Type": "Task",
+        "Resource": "arn:aws:states:::lambda:invoke",
+        "OutputPath": "$.Payload",
+        "Parameters": {
+          "Payload.$": "$",
+          "FunctionName": "${InstallSSM}"
+        },
+        "Retry": [
+          {
+            "ErrorEquals": [
+              "Lambda.ServiceException",
+              "Lambda.AWSLambdaException",
+              "Lambda.SdkClientException",
+              "Lambda.TooManyRequestsException"
+            ],
+            "IntervalSeconds": 2,
+            "MaxAttempts": 6,
+            "BackoffRate": 2
+          }
+        ],
+        "Next": "Check SSM"
+      },
+      "Check SSM": {
+        "Type": "Choice",
+        "Choices": [
+          {
+            "Variable": "$.ssm",
+            "StringMatches": "no",
+            "Next": "Notifications"
+          }
+        ],
+        "Default": "InstallCW"
+      },
+      "InstallCW": {
+        "Type": "Task",
+        "Resource": "arn:aws:states:::lambda:invoke",
+        "OutputPath": "$.Payload",
+        "Parameters": {
+          "Payload.$": "$",
+          "FunctionName": "${InstallCW}"
+        },
+        "Retry": [
+          {
+            "ErrorEquals": [
+              "Lambda.ServiceException",
+              "Lambda.AWSLambdaException",
+              "Lambda.SdkClientException",
+              "Lambda.TooManyRequestsException"
+            ],
+            "IntervalSeconds": 2,
+            "MaxAttempts": 6,
+            "BackoffRate": 2
+          }
+        ],
+        "Next": "Wait For Non Agent Metrics"
+      },
+      "Wait For Non Agent Metrics": {
+        "Type": "Wait",
+        "Seconds": 300,
+        "Next": "EC2NonAgentAlerts"
+      },
+      "EC2NonAgentAlerts": {
+        "Type": "Task",
+        "Resource": "arn:aws:states:::lambda:invoke",
+        "OutputPath": "$.Payload",
+        "Parameters": {
+          "Payload.$": "$",
+          "FunctionName": "${EC2NonAgentAlerts}"
+        },
+        "Retry": [
+          {
+            "ErrorEquals": [
+              "Lambda.ServiceException",
+              "Lambda.AWSLambdaException",
+              "Lambda.SdkClientException",
+              "Lambda.TooManyRequestsException"
+            ],
+            "IntervalSeconds": 2,
+            "MaxAttempts": 6,
+            "BackoffRate": 2
+          }
+        ],
+        "Next": "Wait For Agent Metrics"
+      },
+      "Wait For Agent Metrics": {
+        "Type": "Wait",
+        "Seconds": 300,
+        "Next": "EC2AgentAlerts"
+      },
+      "EC2AgentAlerts": {
+        "Type": "Task",
+        "Resource": "arn:aws:states:::lambda:invoke",
+        "OutputPath": "$.Payload",
+        "Parameters": {
+          "Payload.$": "$",
+          "FunctionName": "${EC2AgentAlerts}"
+        },
+        "Retry": [
+          {
+            "ErrorEquals": [
+              "Lambda.ServiceException",
+              "Lambda.AWSLambdaException",
+              "Lambda.SdkClientException",
+              "Lambda.TooManyRequestsException"
+            ],
+            "IntervalSeconds": 2,
+            "MaxAttempts": 6,
+            "BackoffRate": 2
+          }
+        ],
+        "End": true
+      },
+      "Pass": {
+        "Type": "Pass",
+        "End": true
+      },
+      "Deleter": {
+        "Type": "Task",
+        "Resource": "arn:aws:states:::lambda:invoke",
+        "OutputPath": "$.Payload",
+        "Parameters": {
+          "Payload.$": "$",
+          "FunctionName": "${Deleter}"
+        },
+        "Retry": [
+          {
+            "ErrorEquals": [
+              "Lambda.ServiceException",
+              "Lambda.AWSLambdaException",
+              "Lambda.SdkClientException",
+              "Lambda.TooManyRequestsException"
+            ],
+            "IntervalSeconds": 2,
+            "MaxAttempts": 6,
+            "BackoffRate": 2
+          }
+        ],
+        "End": true
+      },
+      "Create / Delete / Ignore": {
+        "Type": "Choice",
+        "Choices": [
+          {
+            "And": [
+              {
+                "Variable": "$.monitored",
+                "StringMatches": "Yes"
+              },
+              {
+                "Variable": "$.service",
+                "StringMatches": "ec2"
+              },
+              {
+                "Variable": "$.resource_type",
+                "StringMatches": "instance"
+              }
+            ],
+            "Next": "InstallSSM"
+          },
+          {
+            "And": [
+              {
+                "Variable": "$.monitored",
+                "StringMatches": "No"
+              },
+              {
+                "Variable": "$.service",
+                "StringMatches": "ec2"
+              },
+              {
+                "Variable": "$.resource_type",
+                "StringMatches": "instance"
+              }
+            ],
+            "Next": "Deleter"
+          },
+          {
+            "And": [
+              {
+                "Variable": "$.monitored",
+                "StringMatches": "Yes"
+              },
+              {
+                "Variable": "$.service",
+                "StringMatches": "rds"
+              },
+              {
+                "Variable": "$.resource_type",
+                "StringMatches": "db"
+              }
+            ],
+            "Next": "RDS"
+          },
+          {
+            "And": [
+              {
+                "Variable": "$.monitored",
+                "StringMatches": "No"
+              },
+              {
+                "Variable": "$.service",
+                "StringMatches": "rds"
+              },
+              {
+                "Variable": "$.resource_type",
+                "StringMatches": "db"
+              }
+            ],
+            "Next": "Deleter"
+          },
+          {
+            "And": [
+              {
+                "Variable": "$.monitored",
+                "StringMatches": "Yes"
+              },
+              {
+                "Variable": "$.resource_type",
+                "StringMatches": "function"
+              },
+              {
+                "Variable": "$.service",
+                "StringMatches": "lambda"
+              }
+            ],
+            "Next": "Lambda"
+          },
+          {
+            "And": [
+              {
+                "Variable": "$.monitored",
+                "StringMatches": "No"
+              },
+              {
+                "Variable": "$.service",
+                "StringMatches": "lambda"
+              },
+              {
+                "Variable": "$.resource_type",
+                "StringMatches": "function"
+              }
+            ],
+            "Next": "Deleter"
+          },
+          {
+            "And": [
+              {
+                "Variable": "$.monitored",
+                "StringMatches": "Yes"
+              },
+              {
+                "Variable": "$.resource_type",
+                "StringMatches": "vpn-connection"
+              },
+              {
+                "Variable": "$.service",
+                "StringMatches": "ec2"
+              }
+            ],
+            "Next": "VPN"
+          },
+          {
+            "And": [
+              {
+                "Variable": "$.monitored",
+                "StringMatches": "No"
+              },
+              {
+                "Variable": "$.service",
+                "StringMatches": "ec2"
+              },
+              {
+                "Variable": "$.resource_type",
+                "StringMatches": "vpn-connection"
+              }
+            ],
+            "Next": "Deleter"
+          },
+          {
+            "And": [
+              {
+                "Variable": "$.monitored",
+                "StringMatches": "Yes"
+              },
+              {
+                "Variable": "$.resource_type",
+                "StringMatches": "configuration-set"
+              },
+              {
+                "Variable": "$.service",
+                "StringMatches": "ses"
+              }
+            ],
+            "Next": "SES"
+          },
+          {
+            "And": [
+              {
+                "Variable": "$.monitored",
+                "StringMatches": "No"
+              },
+              {
+                "Variable": "$.service",
+                "StringMatches": "ses"
+              },
+              {
+                "Variable": "$.resource_type",
+                "StringMatches": "configuration-set"
+              }
+            ],
+            "Next": "Deleter"
+          },
+          {
+            "And": [
+              {
+                "Variable": "$.monitored",
+                "StringMatches": "Yes"
+              },
+              {
+                "Variable": "$.resource_type",
+                "StringMatches": "cluster"
+              },
+              {
+                "Variable": "$.service",
+                "StringMatches": "ecs"
+              }
+            ],
+            "Next": "ECS"
+          },
+          {
+            "And": [
+              {
+                "Variable": "$.monitored",
+                "StringMatches": "No"
+              },
+              {
+                "Variable": "$.service",
+                "StringMatches": "ecs"
+              },
+              {
+                "Variable": "$.resource_type",
+                "StringMatches": "cluster"
+              }
+            ],
+            "Next": "Deleter"
+          },
+          {
+            "And": [
+              {
+                "Variable": "$.monitored",
+                "StringMatches": "Yes"
+              },
+              {
+                "Variable": "$.resource_type",
+                "StringMatches": "loadbalancer"
+              },
+              {
+                "Variable": "$.service",
+                "StringMatches": "elasticloadbalancing"
+              }
+            ],
+            "Next": "ELB"
+          },
+          {
+            "And": [
+              {
+                "Variable": "$.monitored",
+                "StringMatches": "No"
+              },
+              {
+                "Variable": "$.service",
+                "StringMatches": "elasticloadbalancing"
+              },
+              {
+                "Variable": "$.resource_type",
+                "StringMatches": "loadbalancer"
+              }
+            ],
+            "Next": "Deleter"
+          },
+          {
+            "And": [
+              {
+                "Variable": "$.state",
+                "StringEquals": "terminated"
+              },
+              {
+                "Variable": "$.source",
+                "StringEquals": "aws.ec2"
+              }
+            ],
+            "Next": "Deleter"
+          }
+        ],
+        "Default": "Pass"
+      },
+      "RDS": {
+        "Type": "Task",
+        "Resource": "arn:aws:states:::lambda:invoke",
+        "OutputPath": "$.Payload",
+        "Parameters": {
+          "Payload.$": "$",
+          "FunctionName": "${RDSAlerts}"
+        },
+        "Retry": [
+          {
+            "ErrorEquals": [
+              "Lambda.ServiceException",
+              "Lambda.AWSLambdaException",
+              "Lambda.SdkClientException",
+              "Lambda.TooManyRequestsException"
+            ],
+            "IntervalSeconds": 2,
+            "MaxAttempts": 6,
+            "BackoffRate": 2
+          }
+        ],
+        "End": true
+      },
+      "ECS": {
+        "Type": "Task",
+        "Resource": "arn:aws:states:::lambda:invoke",
+        "OutputPath": "$.Payload",
+        "Parameters": {
+          "Payload.$": "$",
+          "FunctionName": "${ECSAlerts}"
+        },
+        "Retry": [
+          {
+            "ErrorEquals": [
+              "Lambda.ServiceException",
+              "Lambda.AWSLambdaException",
+              "Lambda.SdkClientException",
+              "Lambda.TooManyRequestsException"
+            ],
+            "IntervalSeconds": 2,
+            "MaxAttempts": 6,
+            "BackoffRate": 2
+          }
+        ],
+        "End": true
+      },
+      "ELB": {
+        "Type": "Task",
+        "Resource": "arn:aws:states:::lambda:invoke",
+        "OutputPath": "$.Payload",
+        "Parameters": {
+          "Payload.$": "$",
+          "FunctionName": "${ApplicationELBAlerts}"
+        },
+        "Retry": [
+          {
+            "ErrorEquals": [
+              "Lambda.ServiceException",
+              "Lambda.AWSLambdaException",
+              "Lambda.SdkClientException",
+              "Lambda.TooManyRequestsException"
+            ],
+            "IntervalSeconds": 2,
+            "MaxAttempts": 6,
+            "BackoffRate": 2
+          }
+        ],
+        "End": true
+      },
+      "Lambda": {
+        "Type": "Task",
+        "Resource": "arn:aws:states:::lambda:invoke",
+        "OutputPath": "$.Payload",
+        "Parameters": {
+          "Payload.$": "$",
+          "FunctionName": "${LambdaAlerts}"
+        },
+        "Retry": [
+          {
+            "ErrorEquals": [
+              "Lambda.ServiceException",
+              "Lambda.AWSLambdaException",
+              "Lambda.SdkClientException",
+              "Lambda.TooManyRequestsException"
+            ],
+            "IntervalSeconds": 2,
+            "MaxAttempts": 6,
+            "BackoffRate": 2
+          }
+        ],
+        "End": true
+      },
+      "VPN": {
+        "Type": "Task",
+        "Resource": "arn:aws:states:::lambda:invoke",
+        "OutputPath": "$.Payload",
+        "Parameters": {
+          "Payload.$": "$",
+          "FunctionName": "${VPNAlerts}"
+        },
+        "Retry": [
+          {
+            "ErrorEquals": [
+              "Lambda.ServiceException",
+              "Lambda.AWSLambdaException",
+              "Lambda.SdkClientException",
+              "Lambda.TooManyRequestsException"
+            ],
+            "IntervalSeconds": 2,
+            "MaxAttempts": 6,
+            "BackoffRate": 2
+          }
+        ],
+        "End": true
+      },
+      "SES": {
+        "Type": "Task",
+        "Resource": "arn:aws:states:::lambda:invoke",
+        "OutputPath": "$.Payload",
+        "Parameters": {
+          "Payload.$": "$",
+          "FunctionName": "${SESAlerts}"
+        },
+        "Retry": [
+          {
+            "ErrorEquals": [
+              "Lambda.ServiceException",
+              "Lambda.AWSLambdaException",
+              "Lambda.SdkClientException",
+              "Lambda.TooManyRequestsException"
+            ],
+            "IntervalSeconds": 2,
+            "MaxAttempts": 6,
+            "BackoffRate": 2
+          }
+        ],
+        "End": true
+      }
+    }
+  }
