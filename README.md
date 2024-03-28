@@ -16,7 +16,7 @@ The purpose of this repository is to deploy the serverless infrastructure and re
 
 ### State Machine
 The state machine governs the program flow of the application. 
-![Diagram of the StateMachine](https://github.com/ReburaIT/centralised-observability-automation/blob/main/images/statemachine.png)
+![Diagram of the StateMachine](https://github.com/Fred-Luckham/centralised-observability-automation/blob/main/images/statemachine.png)
 
 ### Lambdas 
 Multiple Lambdas serving functions of the application. These handle the event data and alert creation/deletion.
