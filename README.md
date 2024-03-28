@@ -6,6 +6,9 @@ The purpose of this repository is to deploy the serverless infrastructure and re
 > [!IMPORTANT]
 > Ensure that the setup.yaml is deployed into the account where the application is being hosted. You will also need to cross check the account IDs in the workflow files and samconfig.toml. The setup CloudFormation template deploys resouerces necessary (S3 Bucket, Github Actions Role, [GitHub OIDC trust relationship](https://docs.github.com/en/actions/deployment/security-hardening-your-deployments/configuring-openid-connect-in-amazon-web-services)) for the pipeline to run. It creates a federated identity  which allows your GitHub Actions workflows to access resources in Amazon Web Services (AWS), without needing to store the AWS credentials as long-lived GitHub secrets.
 
+## Purpose
+The purpose of this application is to create alerts on resources in AWS accounts on unrelated and unlinked organisations automatically. It is an event driven serverless application, and recieves inbound tag change events via it's own EventBus. These events are passed onto the StateMachine, which handles the event payload and takes an action accordingly.
+
 ## Deployment Environments
 - Prod
     - Creating a release will deploy the production environment. Ensure that all tests have been performed prior to doing this.
